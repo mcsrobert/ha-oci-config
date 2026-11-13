@@ -60,10 +60,39 @@ class CheckoutTest(unittest.TestCase):
             self.assertEqual(tree.files('custom_components/r'), {'manifest.json': b'{}', 'sub/x.py': b'x'})
             self.assertEqual(tree.files('dist/card.js'), {'card.js': b'js'})
 
+    def test_ignores_export_attributes(self):
+        commit = repository(self.root, 'o/r', {'.gitattributes': 'dist/ignored.js export-ignore\n'
+                                                                 'dist/version.js export-subst\n'
+                                                                 'only/* export-ignore\n',
+                                               'dist/card.js': 'js', 'dist/ignored.js': 'kept',
+                                               'dist/version.js': 'commit = "$Format:%H$"', 'only/a.js': 'a'}, 'v1')
+        with self.github.checkout('o/r', 'v1', commit) as tree:
+            self.assertEqual(tree.files('dist'), {'card.js': b'js', 'ignored.js': b'kept',
+                                                  'version.js': b'commit = "$Format:%H$"'})
+            self.assertEqual(tree.files('dist/version.js'), {'version.js': b'commit = "$Format:%H$"'})
+            self.assertEqual(tree.files('only'), {'a.js': b'a'})
+
+    def test_reads_blobs_without_eol_conversion(self):
+        commit = repository(self.root, 'o/r', {'.gitattributes': '* text eol=crlf\n',
+                                               'dist/card.js': 'a\nb\n', 'dist/empty.js': ''}, 'v1')
+        with self.github.checkout('o/r', 'v1', commit) as tree:
+            self.assertEqual(tree.files('dist'), {'card.js': b'a\nb\n', 'empty.js': b''})
+
     def test_lists_directories_with_non_ascii_names(self):
         commit = repository(self.root, 'o/r', {'custom_components/café/manifest.json': '{}'}, 'v1')
         with self.github.checkout('o/r', 'v1', commit) as tree:
             self.assertEqual(tree.dirs('custom_components'), ['café'])
+
+    def test_reads_files_with_literal_and_unquoted_names(self):
+        files = {'dist/[cards]/café.js': 'café', 'dist/[cards]/tab\tname.js': 'tab',
+                 'dist/[cards]/line\nbreak.js': 'line\nbreak'}
+        commit = repository(self.root, 'o/r', files, 'v1')
+        with self.github.checkout('o/r', 'v1', commit) as tree:
+            self.assertEqual(tree.files('dist/[cards]'),
+                             {name.removeprefix('dist/[cards]/'): data.encode() for name, data in files.items()})
+            for name, data in files.items():
+                with self.subTest(name=name):
+                    self.assertEqual(tree.files(name), {name.rsplit('/', 1)[-1]: data.encode()})
 
     def test_rejects_tag_pointing_elsewhere(self):
         repository(self.root, 'o/r', {'a': 'a'}, 'v1')
