@@ -128,9 +128,9 @@ that changes nothing Home Assistant reads does not restart it.
 
 ## Secrets
 
-Keep `secrets.yaml` out of Git and put it on the persistent volume at
-`/config/secrets.yaml`, where Home Assistant reads it at runtime. Reference
-secrets with `!secret <name>` as usual.
+Keep `secrets.yaml` out of Git and supply it separately at runtime at
+`/config/secrets.yaml`, for example by mounting a Secret managed by
+ExternalSecrets. Reference secrets with `!secret <name>` as usual.
 
 The check has no real secrets, so before running `check_config` the action
 scans every `.yaml` and `.yml` file of the built configuration for `!secret`
@@ -153,7 +153,7 @@ with:
     server_port: 8123
 ```
 
-Use only dummy values here; keep real secrets on the persistent volume. These
+Use only dummy values here; supply real secrets through the runtime mount. These
 values override the generic placeholder for the named secrets only during
 the check. Other referenced secrets keep the generic placeholder. For a local
 check, pass the same YAML mapping with `python -m ha_oci_config check CONFIG

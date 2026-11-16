@@ -48,7 +48,7 @@ def parse_check_secrets(text):
 def write_placeholder_secrets(config, placeholders=None):
     """Write secrets.yaml with a placeholder for every secret the configuration references.
 
-    The real secrets.yaml lives on the persistent volume and never reaches Git or the image,
+    The real secrets.yaml is mounted at runtime and never reaches Git or the image,
     so check_config would otherwise fail on every !secret. Only call this on a throwaway copy.
     """
     config = Path(config)
