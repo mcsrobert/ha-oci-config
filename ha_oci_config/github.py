@@ -63,8 +63,8 @@ class Tree:
         self.commit = commit
 
     def dirs(self, path):
-        names = git('-C', self.repo, 'ls-tree', '-d', '--name-only', self.commit, '--', f'{path}/').decode()
-        return [PurePosixPath(name).name for name in names.splitlines()]
+        names = git('-C', self.repo, 'ls-tree', '-d', '--name-only', '-z', self.commit, '--', f'{path}/').decode()
+        return [PurePosixPath(name).name for name in names.split('\0') if name]
 
     def files(self, path):
         """Files at path: the file itself under its own name, or the contents of a directory."""
@@ -89,7 +89,10 @@ def unzip(data):
                 continue
             if (entry.external_attr >> 16) & 0o170000 not in (0, 0o100000):
                 raise Error(f'{entry.filename} is not a regular file')
-            files[safe(entry.filename)] = archive.read(entry)
+            name = safe(entry.filename)
+            if name in files:
+                raise Error(f'download contains {name!r} more than once')
+            files[name] = archive.read(entry)
     return files
 
 
@@ -113,7 +116,7 @@ def get(url, headers):
 
 
 def git(*args):
-    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_LITERAL_PATHSPECS': '1'}
     try:
         return subprocess.run(['git', *args], check=True, capture_output=True, env=env).stdout
     except subprocess.CalledProcessError as error:

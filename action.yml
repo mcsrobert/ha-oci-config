@@ -7,11 +7,14 @@ inputs:
   path:
     description: Directory of the configuration inside the repository.
     default: .
+  check-secrets:
+    description: YAML mapping of synthetic secret values for check_config only. Never put real secrets here.
+    default: '{}'
   push:
     description: Push the image. Leave false on pull requests.
     default: 'false'
   image:
-    description: Image name without tag. Defaults to ghcr.io/<owner>/<repository>.
+    description: Image name without tag, on ghcr.io. Defaults to ghcr.io/<owner>/<repository>.
     default: ''
   tag:
     description: Tag to push, next to sha-<commit>.
@@ -93,11 +96,12 @@ runs:
         echo "dockerfile=${GITHUB_ACTION_PATH}/Dockerfile" >> "${GITHUB_OUTPUT}"
         image=${IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}}
         echo "image=${image}" >> "${GITHUB_OUTPUT}"
-        echo "registry=${image%%/*}" >> "${GITHUB_OUTPUT}"
 
     - name: Check configuration
       shell: bash
-      run: PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config check "${RUNNER_TEMP}/ha-oci-config"
+      env:
+        CHECK_SECRETS: ${{ inputs.check-secrets }}
+      run: PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config check "${RUNNER_TEMP}/ha-oci-config" --secrets "${CHECK_SECRETS}"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -106,7 +110,7 @@ runs:
       if: inputs.push == 'true'
       uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
       with:
-        registry: ${{ steps.prepare.outputs.registry }}
+        registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ inputs.token }}
 

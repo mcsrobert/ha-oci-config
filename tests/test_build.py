@@ -6,6 +6,7 @@ import shutil
 import stat
 import tempfile
 import unittest
+import warnings
 
 from ha_oci_config.build import build
 from ha_oci_config.errors import Error
@@ -105,6 +106,19 @@ cards:
         ])
         self.assertIn('o/source 1.0 -> custom_components/src', log)
 
+    def test_reads_hacs_yml(self):
+        self.server.release('o/card', 'v2', {'card.js': b'js'})
+        self.write('hacs.yml', 'cards:\n  - repository: o/card\n    version: v2\n    asset: card.js\n')
+        self.build()
+        self.assertIn('www/community/card/card.js', self.files())
+
+    def test_rejects_both_hacs_yaml_and_yml(self):
+        self.write('hacs.yaml', 'cards: []\n')
+        self.write('hacs.yml', 'cards: []\n')
+        with self.assertRaisesRegex(Error, 'either hacs.yaml or hacs.yml'):
+            self.build()
+        self.assertFalse(self.output.parent.exists())
+
     def test_normalizes_permissions(self):
         self.write('pyscript/run.py', '')
         os.chmod(self.source / 'pyscript' / 'run.py', 0o700)
@@ -164,6 +178,34 @@ cards:
                 commit = repository(self.tmp / 'remote', name, files, 'v1')
                 self.write('hacs.yaml', f'integrations:\n  - repository: {name}\n    version: v1\n    commit: {commit}\n')
                 self.assertFails(message)
+
+    def install_zip(self, files):
+        self.server.release('o/a', 'v1', {'x.zip': files})
+        self.write('hacs.yaml', 'integrations:\n  - repository: o/a\n    version: v1\n    asset: x.zip\n')
+
+    def test_rejects_file_and_directory_with_one_name(self):
+        manifest = '{"domain": "a"}'
+        for files in ({'manifest.json': manifest, 'sub': '', 'sub/x.py': ''},
+                      {'manifest.json': manifest, 'sub/x.py': '', 'sub': ''},
+                      {'manifest.json': manifest, 'Sub': '', 'sub/x.py': ''}):
+            with self.subTest(files=list(files)):
+                self.install_zip(zip_bytes(files))
+                self.assertFails('both a file and a directory')
+
+    def test_rejects_names_differing_only_by_case(self):
+        self.install_zip(zip_bytes({'manifest.json': '{"domain": "a"}', 'a.py': '1', 'A.py': '2'}))
+        self.assertFails('conflicting paths')
+
+    def test_rejects_duplicate_zip_entries(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            data = zip_bytes([('manifest.json', '{"domain": "a"}'), ('a.py', '1'), ('a.py', '2')])
+        self.install_zip(data)
+        self.assertFails('more than once')
+
+    def test_reports_write_failures_as_errors(self):
+        self.install_zip(zip_bytes({'manifest.json': '{"domain": "a"}', 'x' * 300: ''}))
+        self.assertFails('cannot write custom_components/a')
 
 
 if __name__ == '__main__':

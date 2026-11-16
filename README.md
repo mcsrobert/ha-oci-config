@@ -48,6 +48,8 @@ Adding a file to a directory never needs a change to the mounts.
 
 ### hacs.yaml
 
+`hacs.yml` is accepted too, but not both.
+
 ```yaml
 integrations:
   - repository: amitfin/retry
@@ -118,12 +120,46 @@ The action:
 1. Scans the Git history for secrets with gitleaks.
 2. Builds the runtime layout from the repository and `hacs.yaml`.
 3. Runs Home Assistant's `check_config` on it and fails on any error or warning.
+   See [Secrets](#secrets).
 4. Builds a `FROM scratch` image for `linux/amd64` and `linux/arm64`. With
    `push: true` it pushes `ghcr.io/<owner>/<repository>:main` and
    `:sha-<commit>`.
 
 The image is reproducible: the same files give the same digest, so a commit
 that changes nothing Home Assistant reads does not restart it.
+
+## Secrets
+
+Keep `secrets.yaml` out of Git and supply it separately at runtime at
+`/config/secrets.yaml`, for example by mounting a Secret managed by
+ExternalSecrets. Reference secrets with `!secret <name>` as usual.
+
+The check has no real secrets, so before running `check_config` the action
+scans every `.yaml` and `.yml` file of the built configuration for `!secret`
+references. It also follows explicit `!include` paths recursively, including
+files with other extensions or none. It writes a `secrets.yaml` with a
+placeholder string for each name into a temporary copy of the configuration
+and checks that copy. The placeholders never reach the image. The check does
+not catch a secret missing from the real `secrets.yaml`.
+
+Some secrets need a specific format or type, such as an IP network, URL, or
+port number. Supply synthetic values with `check-secrets` so these pass
+validation:
+
+```yaml
+with:
+  home-assistant-version: 2026.11.1
+  check-secrets: |
+    reverse_proxy: 192.0.2.0/24
+    public_url: https://example.com
+    server_port: 8123
+```
+
+Use only dummy values here; supply real secrets through the runtime mount. These
+values override the generic placeholder for the named secrets only during
+the check. Other referenced secrets keep the generic placeholder. For a local
+check, pass the same YAML mapping with `python -m ha_oci_config check CONFIG
+--secrets '{server_port: 8123}'`.
 
 ## Renovate
 
