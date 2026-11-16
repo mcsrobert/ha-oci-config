@@ -73,9 +73,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
         IMAGE: ${{ inputs.image }}
       run: |
-        image=${IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}}
         PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config build "${CONFIG_PATH}" "${RUNNER_TEMP}/ha-oci-config"
         echo "dockerfile=${GITHUB_ACTION_PATH}/Dockerfile" >> "${GITHUB_OUTPUT}"
+        image=${IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}}
         echo "image=${image}" >> "${GITHUB_OUTPUT}"
 
     - name: Check configuration
