@@ -108,7 +108,7 @@ jobs:
       packages: write
     steps:
       - name: Check and publish the configuration
-        uses: mcsrobert/ha-oci-config@<commit> # v0.1.0
+        uses: mcsrobert/ha-oci-config@<commit> # v0.2.0
         with:
           # renovate: datasource=pypi depName=homeassistant
           home-assistant-version: 2026.10.4
@@ -118,10 +118,13 @@ jobs:
 The action:
 
 1. Scans the Git history for secrets with gitleaks.
-2. Builds the runtime layout from the repository and `hacs.yaml`.
-3. Runs Home Assistant's `check_config` on it and fails on any error or warning.
+2. Reads `.python-version` from the exact `home-assistant-version` release tag
+   and installs that Python version. Python follows the Home Assistant pin;
+   configuration repositories need no separate Python pin or resolver.
+3. Builds the runtime layout from the repository and `hacs.yaml`.
+4. Runs Home Assistant's `check_config` on it and fails on any error or warning.
    See [Secrets](#secrets).
-4. Builds a `FROM scratch` image for `linux/amd64` and `linux/arm64`. With
+5. Builds a `FROM scratch` image for `linux/amd64` and `linux/arm64`. With
    `push: true` it pushes `ghcr.io/<owner>/<repository>:main` and
    `:sha-<commit>`.
 
