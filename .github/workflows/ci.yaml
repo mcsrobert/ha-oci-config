@@ -45,7 +45,7 @@ jobs:
         uses: ./
         with:
           # renovate: datasource=pypi depName=homeassistant
-          home-assistant-version: 2026.11.1
+          home-assistant-version: 2026.11.2
           path: tests/fixtures/config
           check-secrets: |
             reverse_proxy: 192.0.2.0/24
