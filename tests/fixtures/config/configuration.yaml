@@ -6,4 +6,8 @@ scene: !include scenes.yaml
 
 homeassistant:
   name: !secret home_name
+  latitude: !secret home_latitude
+  external_url: !secret public_url
   packages: !include_dir_named packages
+
+http: !include includes/http.inc

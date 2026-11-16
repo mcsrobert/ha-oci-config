@@ -133,13 +133,31 @@ Keep `secrets.yaml` out of Git and put it on the persistent volume at
 secrets with `!secret <name>` as usual.
 
 The check has no real secrets, so before running `check_config` the action
-scans every YAML file of the built configuration, including everything
-`configuration.yaml` includes, for `!secret` references. It writes a
-`secrets.yaml` with a placeholder string for each name into a temporary copy
-of the configuration and checks that copy. The placeholder never reaches the
-image. As a result, the check does not catch a secret missing from the real
-`secrets.yaml`, and a secret whose value must not be a string, such as a port
-number, can fail validation; use a literal value for those.
+scans every `.yaml` and `.yml` file of the built configuration for `!secret`
+references. It also follows explicit `!include` paths recursively, including
+files with other extensions or none. It writes a `secrets.yaml` with a
+placeholder string for each name into a temporary copy of the configuration
+and checks that copy. The placeholders never reach the image. The check does
+not catch a secret missing from the real `secrets.yaml`.
+
+Some secrets need a specific format or type, such as an IP network, URL, or
+port number. Supply synthetic values with `check-secrets` so these pass
+validation:
+
+```yaml
+with:
+  home-assistant-version: 2026.11.1
+  check-secrets: |
+    reverse_proxy: 192.0.2.0/24
+    public_url: https://example.com
+    server_port: 8123
+```
+
+Use only dummy values here; keep real secrets on the persistent volume. These
+values override the generic placeholder for the named secrets only during
+the check. Other referenced secrets keep the generic placeholder. For a local
+check, pass the same YAML mapping with `python -m ha_oci_config check CONFIG
+--secrets '{server_port: 8123}'`.
 
 ## Renovate
 

@@ -14,13 +14,13 @@ PLACEHOLDER = 'ha-oci-config-placeholder'
 SECRET = re.compile(r'''!secret[ \t]+(?:"([^"\n]+)"|'([^'\n]+)'|([^\s#,\]}]+))''')
 
 
-def check(config):
+def check(config, placeholders=None):
     from homeassistant.scripts import check_config
 
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / 'config'
         shutil.copytree(config, copy)
-        write_placeholder_secrets(copy)
+        write_placeholder_secrets(copy, placeholders)
         result = check_config.check(str(copy))
     problems = {}
     for kind, key in (('errors', 'except'), ('warnings', 'warn')):
@@ -32,7 +32,20 @@ def check(config):
     print('Home Assistant check_config passed')
 
 
-def write_placeholder_secrets(config):
+def parse_check_secrets(text):
+    """Read synthetic validation values supplied through the action or CLI."""
+    try:
+        values = yaml.safe_load(text)
+    except yaml.YAMLError:
+        raise Error('check-secrets must be valid YAML') from None
+    if values is None:
+        return {}
+    if not isinstance(values, dict) or any(not isinstance(name, str) or not name for name in values):
+        raise Error('check-secrets must be a YAML mapping with nonempty string keys')
+    return values
+
+
+def write_placeholder_secrets(config, placeholders=None):
     """Write secrets.yaml with a placeholder for every secret the configuration references.
 
     The real secrets.yaml lives on the persistent volume and never reaches Git or the image,
@@ -41,28 +54,40 @@ def write_placeholder_secrets(config):
     config = Path(config)
     names = sorted(secret_names(config))
     if names:
-        (config / 'secrets.yaml').write_text(yaml.safe_dump(dict.fromkeys(names, PLACEHOLDER), sort_keys=True))
+        placeholders = placeholders or {}
+        values = {name: placeholders.get(name, PLACEHOLDER) for name in names}
+        (config / 'secrets.yaml').write_text(yaml.safe_dump(values, sort_keys=True))
     return names
 
 
 def secret_names(config):
-    """Return the names referenced with !secret in any YAML file under config.
+    """Find !secret references in YAML files and their explicit includes.
 
-    Scanning every file covers whatever configuration.yaml includes, however it includes it.
+    Home Assistant treats an explicit !include as YAML regardless of its extension.
     """
+    config = Path(config).resolve()
     names = set()
-    for path in sorted(Path(config).rglob('*')):
-        if path.suffix in ('.yaml', '.yml') and path.is_file() and path.name != 'secrets.yaml':
-            names |= file_secret_names(path.read_text(errors='replace'))
+    pending = [path for path in sorted(config.rglob('*')) if path.suffix in ('.yaml', '.yml')]
+    seen = set()
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen or not path.is_relative_to(config) or path.name == 'secrets.yaml' or not path.is_file():
+            continue
+        seen.add(path)
+        secrets, includes = file_references(path.read_text(errors='replace'))
+        names |= secrets
+        pending.extend(path.parent / include for include in includes)
     return names
 
 
-def file_secret_names(text):
+def file_references(text):
+    """Return secret names and explicit include paths without constructing YAML tags."""
     try:
         nodes = [node for node in yaml.compose_all(text, Loader=yaml.SafeLoader) if node is not None]
     except yaml.YAMLError:
-        return {next(group for group in match.groups() if group) for match in SECRET.finditer(text)}
+        return {next(group for group in match.groups() if group) for match in SECRET.finditer(text)}, set()
     names = set()
+    includes = set()
     seen = set()
     while nodes:
         node = nodes.pop()
@@ -72,9 +97,11 @@ def file_secret_names(text):
         if isinstance(node, yaml.ScalarNode):
             if node.tag == '!secret' and node.value:
                 names.add(node.value)
+            elif node.tag == '!include' and node.value:
+                includes.add(node.value)
         elif isinstance(node, yaml.SequenceNode):
             nodes.extend(node.value)
         elif isinstance(node, yaml.MappingNode):
             for key, value in node.value:
                 nodes.extend((key, value))
-    return names
+    return names, includes
