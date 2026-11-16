@@ -74,10 +74,6 @@ runs:
         IMAGE: ${{ inputs.image }}
       run: |
         image=${IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}}
-        if [[ "${image}" != ghcr.io/* ]]; then
-          echo "::error::image must be on ghcr.io, got ${image}"
-          exit 1
-        fi
         PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config build "${CONFIG_PATH}" "${RUNNER_TEMP}/ha-oci-config"
         echo "dockerfile=${GITHUB_ACTION_PATH}/Dockerfile" >> "${GITHUB_OUTPUT}"
         echo "image=${image}" >> "${GITHUB_OUTPUT}"
