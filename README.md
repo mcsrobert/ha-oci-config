@@ -108,7 +108,7 @@ jobs:
       packages: write
     steps:
       - name: Check and publish the configuration
-        uses: mcsrobert/ha-oci-config@<commit> # v0.1.0
+        uses: mcsrobert/ha-oci-config@<commit> # v0.2.0
         with:
           # renovate: datasource=pypi depName=homeassistant
           home-assistant-version: 2026.10.4
