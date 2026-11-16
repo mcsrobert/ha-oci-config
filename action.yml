@@ -7,6 +7,9 @@ inputs:
   path:
     description: Directory of the configuration inside the repository.
     default: .
+  check-secrets:
+    description: YAML mapping of synthetic secret values for check_config only. Never put real secrets here.
+    default: '{}'
   push:
     description: Push the image. Leave false on pull requests.
     default: 'false'
@@ -80,7 +83,9 @@ runs:
 
     - name: Check configuration
       shell: bash
-      run: PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config check "${RUNNER_TEMP}/ha-oci-config"
+      env:
+        CHECK_SECRETS: ${{ inputs.check-secrets }}
+      run: PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config check "${RUNNER_TEMP}/ha-oci-config" --secrets "${CHECK_SECRETS}"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
