@@ -35,7 +35,6 @@ runs:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        fetch-depth: 0
         persist-credentials: false
 
     - name: Install gitleaks
@@ -53,9 +52,11 @@ runs:
         echo "${digest#sha256:}  ${RUNNER_TEMP}/${asset}" | sha256sum --check --quiet
         tar -xzf "${RUNNER_TEMP}/${asset}" -C "${RUNNER_TEMP}" gitleaks
 
-    - name: Scan Git history for secrets
+    - name: Scan the configuration for secrets
       shell: bash
-      run: '"${RUNNER_TEMP}/gitleaks" git --no-banner --redact'
+      env:
+        CONFIG_PATH: ${{ inputs.path }}
+      run: '"${RUNNER_TEMP}/gitleaks" dir --no-banner --redact "${CONFIG_PATH}"'
 
     - name: Resolve the Python version of Home Assistant
       id: python
@@ -76,7 +77,12 @@ runs:
       shell: bash
       env:
         VERSION: ${{ inputs.home-assistant-version }}
-      run: python -m pip install --disable-pip-version-check --quiet "homeassistant==${VERSION}"
+      # -P keeps the checked-out repository off sys.path, so its files cannot shadow pip or our modules.
+      # check_config's own REQUIREMENTS (colorlog) are otherwise only installed by Home Assistant's script runner.
+      run: |
+        python -P -m pip install --disable-pip-version-check --quiet "homeassistant==${VERSION}"
+        python -P -m pip install --disable-pip-version-check --quiet $(python -P -c \
+          'from homeassistant.scripts.check_config import REQUIREMENTS; print(*REQUIREMENTS)')
 
     - name: Build configuration
       id: prepare
@@ -86,7 +92,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
         IMAGE: ${{ inputs.image }}
       run: |
-        PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config build "${CONFIG_PATH}" "${RUNNER_TEMP}/ha-oci-config"
+        config=$(mktemp -d "${RUNNER_TEMP}/ha-oci-config.XXXXXX")/config
+        PYTHONPATH="${GITHUB_ACTION_PATH}" python -P -m ha_oci_config build "${CONFIG_PATH}" "${config}"
+        echo "config=${config}" >> "${GITHUB_OUTPUT}"
         echo "dockerfile=${GITHUB_ACTION_PATH}/Dockerfile" >> "${GITHUB_OUTPUT}"
         image=${IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}}
         echo "image=${image}" >> "${GITHUB_OUTPUT}"
@@ -95,7 +103,8 @@ runs:
       shell: bash
       env:
         CHECK_SECRETS: ${{ inputs.check-secrets }}
-      run: PYTHONPATH="${GITHUB_ACTION_PATH}" python -m ha_oci_config check "${RUNNER_TEMP}/ha-oci-config" --secrets "${CHECK_SECRETS}"
+        CONFIG: ${{ steps.prepare.outputs.config }}
+      run: PYTHONPATH="${GITHUB_ACTION_PATH}" python -P -m ha_oci_config check "${CONFIG}" --secrets "${CHECK_SECRETS}"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -114,7 +123,7 @@ runs:
       env:
         SOURCE_DATE_EPOCH: '0'
       with:
-        context: ${{ runner.temp }}/ha-oci-config
+        context: ${{ steps.prepare.outputs.config }}
         file: ${{ steps.prepare.outputs.dockerfile }}
         platforms: linux/amd64,linux/arm64
         provenance: false

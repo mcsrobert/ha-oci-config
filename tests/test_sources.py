@@ -75,6 +75,12 @@ class LoadTest(unittest.TestCase):
         self.assertInvalid('integrations:\n  - repository: a/b\n    version: v1\n    asset: b.zip\n'
                            'cards:\n  - repository: A/B\n    version: v1\n    asset: b.js\n', 'more than once: a/b')
 
+    def test_rejects_duplicate_keys(self):
+        self.assertInvalid('cards:\n  - repository: a/b\n    version: v1\n    asset: b.js\ncards: []\n',
+                           "line 5: duplicate key 'cards'")
+        self.assertInvalid('cards:\n  - repository: a/b\n    version: v1\n    version: v2\n    asset: b.js\n',
+                           "line 4: duplicate key 'version'")
+
 
 if __name__ == '__main__':
     unittest.main()
