@@ -6,10 +6,13 @@ integrations and dashboard cards, as an OCI image. Kubernetes mounts that image
 read-only into the Home Assistant pod as an
 [image volume](https://kubernetes.io/docs/concepts/storage/volumes/#image).
 
-The image bundles everything the configuration depends on. The Action downloads
-each custom integration and card pinned in `hacs.yaml`, verifies it and
-installs it into the image, so Home Assistant needs neither HACS nor network
-access to GitHub at runtime. To update a dependency, change its pin in Git.
+The image bundles the files of every custom integration and card the
+configuration uses. The Action downloads each one pinned in `hacs.yaml`,
+verifies it and installs it into the image, so Home Assistant needs neither
+HACS nor network access to GitHub at runtime. To update a dependency, change its
+pin in Git. The image does not contain Python packages: Home Assistant still
+installs the `requirements` an integration's `manifest.json` declares, from
+PyPI, when it first loads the integration.
 
 Git is the only way to change the YAML configuration. The mounts below block
 Home Assistant's UI editors from saving automations, scripts and scenes.
@@ -74,7 +77,11 @@ update it:
 
 - `asset`: a file attached to the GitHub release `version`. The download must
   match the SHA-256 digest GitHub publishes for the asset. An integration asset
-  is a zip with `manifest.json` at its root.
+  is a zip with `manifest.json` at its root. The digest is read from the
+  release on every build, so it protects the download, not the pin: if the
+  publisher replaces the asset on a release that is not
+  [immutable](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases),
+  the next build installs the replacement. Pin a `commit` where that matters.
 - `commit`: the repository at that commit, fetched with Git. The tag `version`
   must point to it. An integration is the single directory under
   `custom_components/`. A card takes the file or directory at `path`.
@@ -117,7 +124,9 @@ jobs:
 
 The action:
 
-1. Scans the Git history for secrets with gitleaks.
+1. Scans the configuration directory for secrets with gitleaks, so none reach
+   the image. It does not scan Git history; use GitHub secret scanning with
+   push protection, or your own pre-commit hook, to keep secrets out of commits.
 2. Reads `.python-version` from the exact `home-assistant-version` release tag
    and installs that Python version. Python follows the Home Assistant pin;
    configuration repositories need no separate Python pin or resolver.
@@ -135,7 +144,15 @@ that changes nothing Home Assistant reads does not restart it.
 
 Keep `secrets.yaml` out of Git and supply it separately at runtime at
 `/config/secrets.yaml`, for example by mounting a Secret managed by
-ExternalSecrets. Reference secrets with `!secret <name>` as usual.
+ExternalSecrets. Reference secrets with `!secret <name>` as usual. The build
+fails on a `secrets.yaml` in any configuration directory, because Home Assistant
+would read it instead of the mounted file.
+
+gitleaks finds only values that look like credentials. Keep every secret in
+`secrets.yaml` and reference it with `!secret`: an inline short password, or
+any other value outside known patterns, passes the scan. To accept a false
+positive, add its fingerprint to `.gitleaksignore` or a `gitleaks:allow`
+comment; a `.gitleaks.toml` in the configuration directory is also applied.
 
 The check has no real secrets, so before running `check_config` the action
 scans every `.yaml` and `.yml` file of the built configuration for `!secret`
@@ -158,7 +175,8 @@ with:
     server_port: 8123
 ```
 
-Use only dummy values here; supply real secrets through the runtime mount. These
+Use only dummy values here: they are committed in your workflow file. Supply
+real secrets through the runtime mount. These
 values override the generic placeholder for the named secrets only during
 the check. Other referenced secrets keep the generic placeholder. For a local
 check, pass the same YAML mapping with `python -m ha_oci_config check CONFIG

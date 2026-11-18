@@ -16,6 +16,17 @@ SHAPES = {
 }
 
 
+class Loader(yaml.BaseLoader):
+    """Keeps every value a string and rejects duplicate keys, which PyYAML would silently overwrite."""
+
+    def construct_mapping(self, node, deep=False):
+        keys = [self.construct_object(key) for key, _ in node.value]
+        for index, key in enumerate(keys):
+            if key in keys[:index]:
+                raise Error(f'hacs.yaml line {node.value[index][0].start_mark.line + 1}: duplicate key {key!r}')
+        return super().construct_mapping(node, deep)
+
+
 @dataclass(frozen=True)
 class Source:
     category: str
@@ -34,7 +45,7 @@ class Source:
 
 
 def load(text):
-    data = yaml.load(text, Loader=yaml.BaseLoader) or {}
+    data = yaml.load(text, Loader=Loader) or {}
     if not isinstance(data, dict) or set(data) - set(SHAPES):
         raise Error('hacs.yaml may only contain the lists integrations and cards')
     sources = []

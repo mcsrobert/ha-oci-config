@@ -109,6 +109,9 @@ def copy_tree(source, target):
         raise Error(f'{source} must be a directory')
     target.mkdir()
     for entry in sorted(source.iterdir()):
+        # Home Assistant prefers a secrets.yaml next to the including file over the mounted one.
+        if entry.name.casefold() == 'secrets.yaml':
+            raise Error(f'{entry}: keep secrets.yaml out of the configuration; it is supplied at runtime')
         if entry.is_dir() and not entry.is_symlink():
             copy_tree(entry, target / entry.name)
         else:

@@ -137,6 +137,13 @@ cards:
         (self.source / 'packages' / 'link.yaml').symlink_to('/etc/hosts')
         self.assertFails('link.yaml must be a regular file')
 
+    def test_rejects_secrets_yaml_in_configuration_directories(self):
+        for name in ('includes/secrets.yaml', 'packages/nested/Secrets.yaml'):
+            with self.subTest(name=name):
+                self.write(name, 'password: real\n')
+                self.assertFails('keep secrets.yaml out of the configuration')
+                (self.source / name).unlink()
+
     def test_requires_every_root_yaml_file(self):
         for name, content in (('configuration.yaml', 'homeassistant:\n'), ('automations.yaml', '[]\n'),
                               ('scripts.yaml', '{}\n'), ('scenes.yaml', '[]\n')):
